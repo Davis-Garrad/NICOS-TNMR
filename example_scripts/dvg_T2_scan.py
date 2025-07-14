@@ -21,7 +21,7 @@
 
 # do "accessory" stuff. Set field, temperature, etc.
 if(False):
-    se_tt.move(temperature) # set PPMS temperature
+    maw(se_tt, temperature) # set PPMS temperature
     nicossleep(1200) # 20 minutes
 # ...
 
@@ -32,11 +32,11 @@ p180_2 = generate_pulse(5,   40, 0.1, '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180de
 seq = [ p90, p180_2 ]
 
 # Create the list of sequences to scan (specifically, for a T1 scan)
-taus = [ 2, 4, 8, 10, 16, 24, 32, 50, 64, 100, 128, 196 ]
+taus = [ 24, 32, 50, 64, 100, 128, 196 ]
 # generates a list of sequences; copies of seq are made, only the zeroth pulse is modified. Each copy is given a 'delay_time' value from delay_times
 seq_list = generate_sequences(seq, [0], 'delay_time', taus)
 for i in range(len(seq_list)):
-    seq_list[i][1]['delay_time'] = max(seq_list[i][0]['delay_time'] - 50.0, 0.1)
+    seq_list[i][1]['delay_time'] = max(seq_list[i][0]['delay_time'] - 20.0, 0.1)
 
 # Set some parameters independent of pulse sequence
 se_tnmr_otf_module.acq_phase_cycle = '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1'

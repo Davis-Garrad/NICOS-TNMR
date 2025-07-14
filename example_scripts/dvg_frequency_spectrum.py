@@ -19,11 +19,14 @@
 #
 # *****************************************************************************
 
+# Create each individual pulse
 p90    = generate_pulse(2.5, 40, 50,  '0 2 0 2 1 3 1 3 0 2 0 2 1 3 1 3')
 p180_2 = generate_pulse(5,   40, 0.1, '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3')
 
+# Structure our pulse sequence as a list of multiple pulses
 seq = [ p90, p180_2 ]
 
+# Set global parameters
 se_tnmr_otf_module.acq_phase_cycle = '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1'
 se_tnmr_otf_module.acquisition_time = 204.8 # us
 se_tnmr_otf_module.num_scans = 128
@@ -35,17 +38,17 @@ frequency_range = 0.4 # MHz
 half_N = 10
 frequencies = [ central_frequency - frequency_range/2 + frequency_range * (i/(2*half_N)) for i in range(0, 2*half_N+1) ]
 
-eta = 0
-for fq in frequencies:
-    eta += estimate_sequence_length(seq)
+eta = estimate_sequence_length(seq) * len(frequencies) # estimate the time to finish. This is normally pretty accurate, but by no means is it 100% perfect.
 print(timestring(eta))
 
-begin_tnmr_scan()
+AddEnvironment(se_tt, se_mf) # add temperature and field to the environment to be read and saved each sequence.
+
+begin_tnmr_scan() # we want to lump all the measurements together, but we're changing a non-sequence-specific parameter. Calling begin_tnmr_scan will ensure that scan_sequence(seq) does not deal with the datamanager.
 for fq in range(len(frequencies)):
     se_tnmr_otf_module.obs_freq = frequencies[fq] # MHz
     eta = 0
     for j in frequencies[fq:]:
         eta += estimate_sequence_length(seq)
     print(timestring(eta) + ' remaining')
-    scan_sequence(seq, [ (se_tt.read, 'ppms_temperature'), (se_mf.read, 'ppms_field') ])
+    scan_sequence(seq)
 finish_tnmr_scan()

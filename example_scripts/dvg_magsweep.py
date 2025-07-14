@@ -43,7 +43,7 @@ print(timestring(eta))
 
 begin_tnmr_scan()
 for field in fields:
-    set_ppms_field(field/10000.0) # Tesla
+    maw(se_mf, field/1e4) # tesla
     print_sequence(seq)
 
     # Acquire data

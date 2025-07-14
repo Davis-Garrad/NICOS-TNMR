@@ -20,11 +20,13 @@
 # *****************************************************************************
 
 import time
+from nicos import session
 from nicos.core.data import DataManager
 from nicos.core.data.dataset import PointDataset, ScanDataset
 import nicos.core.constants as consts
 from nicos.commands import helparglist, usercommand
 from nicos.commands.basic import sleep as nicossleep
+from nicos.commands.device import maw
 from nicos.utils import createThread
 import math
 from datetime import datetime
@@ -164,15 +166,13 @@ def set_ppms_field(f):
     if(rel_diff <= 0.1e-2): # less than 0.1% difference
         session.log.info(f'Field difference from target is {rel_diff*100}%. This is likely less than the PPMS precision. (<0.1% warning)')
         
-    ppms.move(f)
-    while not(ppms.isCompleted()):
-        nicossleep(1)
+    maw(ppms, f)
     session.log.info(f'PPMS reached target')
 
 @usercommand
-@helparglist('a pulse sequence to scan')
-def scan_sequence(seq):
-    scan_sequences([seq])
+@helparglist('the reference name of the tnmr module, a pulse sequence to scan')
+def scan_sequence(dev, seq):
+    scan_sequences(dev, [seq])
     nicossleep(2.0)
 
 @usercommand
@@ -212,14 +212,14 @@ def get_tnmr_params():
     return params_dictionary
 
 @usercommand
-@helparglist('a list of pulse sequences to scan over, and an optional list of tuples: (functions which return a value to be written, label for the value)')
-def scan_sequences(sequence_list, additional_readables=[]):
+@helparglist('the reference name of the tnmr module, a list of pulse sequences to scan over')
+def scan_sequences(dev, sequence_list):
     def do_scan(sequence_list):
         global TNMR_CURRENTLY_SCANNING
         global TNMR_CURRENT_POINT
         st = time.time()
         try:
-            tnmr = session.getDevice(TNMR_MODULE_NAME)
+            tnmr = session.getDevice(dev)
             started_scan = (TNMR_CURRENTLY_SCANNING is None) # are we starting the scan or did someone else?
             dm = begin_tnmr_scan(True)
             st = time.time()
@@ -243,15 +243,14 @@ def scan_sequences(sequence_list, additional_readables=[]):
                 sequence_dictionary = {}
                 for j in range(len(sequence_list[i])):
                     sequence_dictionary[j] = sequence_list[i][j]
+                current_time = time.time()
                 full_value_dict = {
-                  'tnmr_reals':    (TNMR_CURRENT_POINT, data['reals']), 
-                  'tnmr_imags':    (TNMR_CURRENT_POINT, data['imags']),  
-                  'tnmr_times':    (TNMR_CURRENT_POINT, data['t']),
-                  'tnmr_sequence': (TNMR_CURRENT_POINT, sequence_dictionary),
-                  'tnmr_params':   (TNMR_CURRENT_POINT, get_tnmr_params()),
+                  'signal:tnmr_reals':    (current_time, data['reals']), 
+                  'auxiliary_signals:tnmr_imags':    (current_time, data['imags']),  
+                  'axes:tnmr_times':    (current_time, data['t']),
+                  'tnmr_sequence': (current_time, sequence_dictionary),
+                  'tnmr_params':   (current_time, get_tnmr_params()),
                 }
-                for func_label_pair in additional_readables:
-                    full_value_dict[func_label_pair[1]] = (TNMR_CURRENT_POINT, [func_label_pair[0]()])
                 
                 dm.putValues(full_value_dict)
                 TNMR_CURRENT_POINT += 1

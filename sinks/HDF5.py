@@ -1,24 +1,3 @@
-# *****************************************************************************
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
-# details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-#
-# Module authors:
-#   Davis V. Garrad <davis.last@psi.ch>
-#
-# *****************************************************************************
-
 from nicos.devices.datasinks import FileSink
 from nicos.core.data.sink import DataSinkHandler
 from nicos.core import Override, Param
@@ -48,6 +27,7 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
 
     def begin(self):
         with hdf.File(self._filepath, 'a') as file:
+            #file.attrs['version'] = '100' # reserved for non-backwards-compatible changes!
             g = file.require_group('/metadata/')
             d = g.create_dataset('date', data=f'{time.time()} ({time.gmtime()})', dtype=hdf.string_dtype(length=128))
             lc = g.create_dataset('local_contact', data=f'{session.experiment.localcontact}', dtype=hdf.string_dtype(length=128))
@@ -57,28 +37,28 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
     def putMetainfo(self, mi):
         session.log.info('mi')
         session.log.info(str(mi))
+        
+    def __save_val(self, v, key, file, parent_group):
+        if(isinstance(v, dict)):
+            pg = parent_group.require_group(str(key))
+            self.__save_dict(v, file, pg)    
+        elif(isinstance(v, list) or isinstance(v, np.ndarray)):
+            parent_group.create_dataset(str(key), data=np.array(v))
+        elif(isinstance(v, str)):
+            parent_group.create_dataset(str(key), data=v, dtype=hdf.string_dtype(length=len(v) + 16))
+        else:
+            parent_group.create_dataset(str(key), data=np.array([v])) 
     
     def __save_dict(self, d, file, parent_group):
         for key, val in d.items():
-            if(type(val) is dict):
-                g = parent_group.require_group(str(key))
-                self.__save_dict(val, file, g)
-            else:
-                if(type(val) is str):
-                    d = parent_group.create_dataset(str(key), data=val, dtype=hdf.string_dtype(length=len(val) + 16))
-                else:
-                    d = parent_group.create_dataset(str(key), data=val) 
+            self.__save_val(val, key, file, parent_group)
     
     def putValues(self, vals):
         #session.log.info('vals')
         with hdf.File(self._filepath, 'a') as file:
             for key, val in vals.items():
-                g = file.require_group(f'/point{val[0]}/')
-                if(type(val[1]) is dict):
-                    pg = g.require_group(str(key))
-                    self.__save_dict(val[1], file, pg)
-                else:
-                    d = g.create_dataset(str(key), data=np.array(val[1]))
+                g = file.require_group(f'/entry{val[0]}/')
+                self.__save_val(val[1], key, file, g)
     
     def putResults(self, quality, results):
         pass

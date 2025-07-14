@@ -21,7 +21,7 @@
 
 # do "accessory" stuff. Set field, temperature, etc.
 if(False):
-    se_tt.move(temperature) # set PPMS temperature
+    maw(se_tt, temperature) # set PPMS temperature
     nicossleep(1200) # 20 minutes
 # ...
 
