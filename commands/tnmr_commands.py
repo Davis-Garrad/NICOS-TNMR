@@ -173,7 +173,6 @@ def set_ppms_field(f):
 @helparglist('the reference name of the tnmr module, a pulse sequence to scan')
 def scan_sequence(dev, seq):
     scan_sequences(dev, [seq])
-    nicossleep(2.0)
 
 @usercommand
 def begin_tnmr_scan(soft=False):
