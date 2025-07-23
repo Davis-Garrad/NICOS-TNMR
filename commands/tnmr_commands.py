@@ -20,6 +20,10 @@
 # *****************************************************************************
 
 import time
+import math
+from datetime import datetime
+import traceback
+
 from nicos import session
 from nicos.core.data import DataManager
 from nicos.core.data.dataset import PointDataset, ScanDataset
@@ -28,8 +32,6 @@ from nicos.commands import helparglist, usercommand
 from nicos.commands.basic import sleep as nicossleep
 from nicos.commands.device import maw
 from nicos.utils import createThread
-import math
-from datetime import datetime
 
 TNMR_CURRENTLY_SCANNING = None
 TNMR_CURRENT_POINT = 0
@@ -100,7 +102,6 @@ def estimate_sequence_length(seq):
 @usercommand
 @helparglist('a sequence of pulse sequences to estimate')
 def estimate_scan_length(scan_seq):
-
     total_eta = 0.0
     for j in scan_seq:
         total_eta += estimate_sequence_length(j)
@@ -147,27 +148,6 @@ def print_sequence(seq):
     session.log.info('------------------------')
     session.log.info(f'ETA: {timestring(estimate_sequence_length(seq))}')
     session.log.info('------------------------')
-    
-@usercommand
-@helparglist('field strength (T)')
-def set_ppms_field(f):
-    session.log.info(f'Setting field to {f}T')
-    ppms = session.getDevice('se_mf')
-    level = session.getDevice('se_lev')
-    if(level.read() <= 65):
-        session.log.info('He level below 65%. Taking field down to zero for safety. Halting script.')
-        ppms.move(0)
-        while True:
-            nicossleep(60) # keep control
-    field = ppms.read()
-    diff = abs(f - field)
-    rel_diff = diff / field
-    
-    if(rel_diff <= 0.1e-2): # less than 0.1% difference
-        session.log.info(f'Field difference from target is {rel_diff*100}%. This is likely less than the PPMS precision. (<0.1% warning)')
-        
-    maw(ppms, f)
-    session.log.info(f'PPMS reached target')
 
 @usercommand
 @helparglist('the reference name of the tnmr module, a pulse sequence to scan')
@@ -179,9 +159,9 @@ def begin_tnmr_scan(soft=False):
     global TNMR_CURRENTLY_SCANNING
     global TNMR_CURRENT_POINT
     
+    if not(soft):
+        finish_tnmr_scan()
     if(TNMR_CURRENTLY_SCANNING is None):
-        if not(soft):
-            finish_tnmr_scan()
         dm = DataManager()
         db = dm.beginScan()
         TNMR_CURRENTLY_SCANNING = dm
@@ -192,7 +172,6 @@ def begin_tnmr_scan(soft=False):
 def finish_tnmr_scan():
     global TNMR_CURRENTLY_SCANNING
     if not(TNMR_CURRENTLY_SCANNING is None):
-        print('finish scan')
         TNMR_CURRENTLY_SCANNING.finishScan()
         TNMR_CURRENTLY_SCANNING = None
 
@@ -211,8 +190,8 @@ def get_tnmr_params():
     return params_dictionary
 
 @usercommand
-@helparglist('the reference name of the tnmr module, a list of pulse sequences to scan over')
-def scan_sequences(dev, sequence_list):
+@helparglist('the reference name of the tnmr module, a list of pulse sequences to scan over, a list of (name, lambda) tuples to call (no argument) to be added to the save file')
+def scan_sequences(dev, sequence_list, additional_saving_lambdas=[]):
     def do_scan(sequence_list):
         global TNMR_CURRENTLY_SCANNING
         global TNMR_CURRENT_POINT
@@ -244,12 +223,21 @@ def scan_sequences(dev, sequence_list):
                     sequence_dictionary[j] = sequence_list[i][j]
                 current_time = time.time()
                 full_value_dict = {
-                  'signal:tnmr_reals':    (current_time, data['reals']), 
+                  'signal:tnmr_reals':               (current_time, data['reals']), 
                   'auxiliary_signals:tnmr_imags':    (current_time, data['imags']),  
-                  'axes:tnmr_times':    (current_time, data['t']),
-                  'tnmr_sequence': (current_time, sequence_dictionary),
-                  'tnmr_params':   (current_time, get_tnmr_params()),
+                  'axes:tnmr_times':                 (current_time, data['t']),
+                  'tnmr_sequence':                   (current_time, sequence_dictionary),
+                  'tnmr_params':                     (current_time, get_tnmr_params()),
+                  'metadata/nucleus':                (current_time, tnmr.nucleus),
+                  'metadata/sample':                 (current_time, tnmr.sample),
+                  'metadata/comments':               (current_time, tnmr.comments),
                 }
+                for i in additional_saving_lambdas:
+                    try:
+                        full_value_dict['environment/'+i[0]] = (current_time, i[1]())
+                    except:
+                        session.log.warning(f'Could not acquire parameter `{i[0]}` for writing into NeXus file. Traceback: \n{traceback.format_exc()}')
+                        pass
                 
                 dm.putValues(full_value_dict)
                 TNMR_CURRENT_POINT += 1
@@ -259,7 +247,7 @@ def scan_sequences(dev, sequence_list):
                 finish_tnmr_scan()
         except Exception as e:
             import traceback
-            session.log.info(traceback.format_exc())
+            session.log.warning(traceback.format_exc())
             finish_tnmr_scan()
         et = time.time()
         dt = et - st

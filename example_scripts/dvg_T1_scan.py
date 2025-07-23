@@ -33,7 +33,7 @@ p180_2 = generate_pulse(5,   40, 0.1, '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180de
 seq = [ p90, p180_2 ]
 
 # Create the list of sequences to scan (specifically, for a T1 scan)
-delay_times = ERROR
+delay_times = []
 # generates a list of sequences; copies of seq are made, only the zeroth pulse is modified. Each copy is given a 'delay_time' value from delay_times
 seq_list = generate_sequences(seq, [0], 'delay_time', taus)
 

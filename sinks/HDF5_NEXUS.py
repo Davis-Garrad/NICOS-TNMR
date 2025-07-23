@@ -7,6 +7,7 @@ from nicos import session
 import h5py as hdf
 import numpy as np
 import time
+import datetime # For simple ISO8601 usage.
 
 class HDF5ScanfileSinkHandler(DataSinkHandler):
     def __init__(self, sink, dataset, detector):
@@ -14,6 +15,7 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
         self._file = []
         self._fname = None
         self._template = sink.filenametemplate
+        hdf.get_config().track_order = True # keeps the order that objects are added in.
 
     def prepare(self):
         self.manager.assignCounter(self.dataset)
@@ -74,7 +76,6 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
             validate_and_add(key, 'axes', 'list', d)
             validate_and_add(key, 'signal', 'single', d)
             key = validate_and_add(key, 'auxiliary_signals', 'list', d)
-            print(val, key, type(val))
             newg = self.__save_val(val, key, file, d)
             
         for f in self._filepaths:
@@ -90,11 +91,15 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
                     last_entry = 0
                 else:
                     last_entry = max(entries)
+                #print('last', last_entry)
                 new_entry = last_entry + 1
                 
                 g = file.require_group(f'entry{new_entry}')
                 g.attrs['NX_class'] = 'NXentry'
                 g.attrs['signal'] = 'nmr_data'
+                
+                timestamp_str = str(datetime.datetime.now().astimezone().isoformat()) # NX_DATE_TIME, AKA ISO8601 date/time stamp
+                timestamp = g.create_dataset('end_time', data=timestamp_str, dtype=hdf.string_dtype(length=len(timestamp_str)))
                 
                 d = g.require_group(f'nmr_data')
                 d.attrs['NX_class'] = 'NXdata'
@@ -105,8 +110,18 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
                 env = g.require_group(f'environment')
                 env.attrs['NX_class'] = 'NXdata'
                 
+                metadata_grp = file.require_group('/metadata/')
+                
                 for key, val in vals.items():
-                    write_val(key, val[1], d)
+                    grp = d
+                    K = key
+                    if('environment/' in key):
+                        K = key[len('environment/'):]
+                        grp = env
+                    elif('metadata/' in key) and (new_entry == 1):
+                        K = key[len('metadata/'):]
+                        grp = metadata_grp
+                    write_val(K, val[1], grp)
                 
                 for key in session.experiment.detlist:
                     write_val(key, session.getDevice(key).read(), dets)
@@ -116,11 +131,11 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
     
     def putResults(self, quality, results):
         pass
-        #session.log.info('HDF putResults is not implemented! Use putResults.')
+        #session.log.info('HDF_NeXus putResults is not implemented! Use putResults.')
         
     def addSubset(self, subset):
         pass
-        #session.log.info('HDF addSubset is not implemented! Use putValues.')
+        #session.log.info('HDF_NeXus addSubset is not implemented! Use putValues.')
         
     #def end(self):
     #    pass # nothing afaik needs to be done here.
