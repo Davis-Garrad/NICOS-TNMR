@@ -123,12 +123,27 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
             k = tags[-1]
             if(name in tags[:-1] and ':' in key_to_check):
                 if(typ == 'list'):
-                    if(name in d.attrs.keys()):
-                        d.attrs[name] += [ k ]
+                    if(name in group.attrs.keys()):
+                        val_list = group.attrs[name]
+                        if not(k in val_list):
+                            max_len = len(val_list[0])
+                            for i in val_list:
+                                if(len(i) > max_len):
+                                    max_len = len(i)
+                            print(max_len, val_list)
+                            if(len(k) > max_len):
+                                max_len = len(k)
+                            new_arr = np.ndarray((len(group.attrs[name])+1,), dtype=f'<U{max_len}')
+                            new_arr[:-1] = group.attrs[name]
+                            new_arr[-1] = k
+                            group.attrs[name] = new_arr
                     else:
-                        d.attrs[name] = [ k ]
+                        group.attrs[name] = [ k ]
                 elif(typ == 'single'):
-                    d.attrs[name] = k
+                    try:
+                        group.attrs.modify(name, bytes(k, 'utf-8'))
+                    except:
+                        group.attrs[name] = bytes(k, 'utf-8')
             return k
             
         def write_val(key, val, d):

@@ -26,7 +26,7 @@ seq = [ p90, p180_2 ]
 
 se_tnmr_otf_module.acq_phase_cycle = '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1'
 se_tnmr_otf_module.acquisition_time = 204.8 # us
-se_tnmr_otf_module.num_scans = 1024
+se_tnmr_otf_module.num_acqs = 1024
 se_tnmr_otf_module.ringdown_time = 1 # us
 se_tnmr_otf_module.post_acquisition_time = 500 # ms
 se_tnmr_otf_module.obs_freq = 41.59 # MHz
