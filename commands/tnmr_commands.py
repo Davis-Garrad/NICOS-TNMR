@@ -53,9 +53,10 @@ class tnmr_scan:
             
     def __exit__(self):
         global TNMR_CURRENTLY_SCANNING
-        if not(TNMR_CURRENTLY_SCANNING is None) and self.toplevel:
+        if not(TNMR_CURRENTLY_SCANNING is None) and (self.toplevel):
             TNMR_CURRENTLY_SCANNING.finishScan()
             TNMR_CURRENTLY_SCANNING = None
+            session.log.info('Closing scan file context')
     
 @usercommand
 @parallel_safe
@@ -158,10 +159,13 @@ def estimate_scan_length(params, scan_seq):
 @parallel_safe
 @helparglist('seconds')
 def timestring(seconds):
+    days = int(seconds // (24*3600))
     hours = int(seconds // 3600)
     minutes = int(seconds // 60)
 
-    if(seconds > 3600):
+    if(seconds > 24*3600):
+        etastr = f'{days}d{hours-(24*3600)*days}h'
+    elif(seconds > 3600):
         etastr = f'{hours}h{minutes - hours*60}m'
     elif(seconds > 60):
         etastr = f'{minutes}m{int(seconds) - minutes*60}s'
@@ -187,11 +191,7 @@ def print_sequence(seq):
     session.log.info('------------------------')
     session.log.info('PW      |PH      |DT      |PC')
     for i in seq:
-        delay_time = 0
-        try:
-            delay_time = i['delay_time']
-        except:
-            delay_time = i['relaxation_time'] # legacy
+        delay_time = i['delay_time']
         
         session.log.info(f'{i["pulse_width"]:<8}|{i["pulse_height"]:<8}|{delay_time:<8}|{i["phase_cycle"]}')
     session.log.info('------------------------')
@@ -214,7 +214,7 @@ def get_tnmr_params(dev):
 
 @usercommand
 @helparglist('the reference name of the tnmr module, a pulse sequence to scan')
-def scan_sequence(dev, seq, additional_saving_lambdas={}, silent=False):
+def scan_sequence(dev, seq, additional_saving_lambdas={}):
     try:
         tnmr = session.getDevice(dev)
         with tnmr_scan() as dm: # open a file if one is not already opened; if one is, this just gives us a reference to the appropriate datamanager.
