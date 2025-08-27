@@ -35,16 +35,16 @@ globalparams = {
     'nucleus': 'NUCMgReS',
     'comments': 'An example of a T1 scan',
 }
-se_tnmr_otf_module.update_parameters(globalparams)
+nmr_daq_scout.update_parameters(globalparams)
 
 fields = [ 6.8 + i*1e-3 for i in range(2000) ]
 
 print(timestring(estimate_scan_length(globalparams, seq)*len(fields)))
 
-with tnmr_scan(): # Enters a mode of manual file control. Values will now be written into a single file until finish_tnmr_scan() is called
+with tnmr_scan(): # Enters a mode of manual file control. Values will now be written into a single file until the context is lost
     for field in fields:
         maw(se_mf, field) # assuming se_mf controls the reader's external field strength (PPMS, etc.)
         print_sequence(seq)
     
         # Acquire data
-        scan_sequence(seq) # gather the data
+        scan_sequence(nmr_daq_scout, seq) # gather the data

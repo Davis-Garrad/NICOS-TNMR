@@ -53,7 +53,7 @@ globalparams = {
     'nucleus': 'NUCMgReS',
     'comments': 'An example of a T1 scan',
 }
-se_tnmr_otf_module.update_parameters(globalparams)
+nmr_daq_scout.update_parameters(globalparams)
 
 # Acquire data
-scan_sequences(se_tnmr_otf_module, seq_list) # gather the data
+scan_sequences(nmr_daq_scout, seq_list) # gather the data

@@ -27,23 +27,17 @@ sysconfig = dict(
     datasinks = [ 'hdf5filesink', ],
 )
 
-modules = [ "nicos_sinq.frappy_sinq.devices", "nicos_sinq.tnmr.commands.tnmr_commands", "nicos_sinq.tnmr.sinks.HDF5" ]
+modules = [ "nicos_sinq.frappy_sinq.devices", "nicos_sinq.tnmr.commands.tnmr_commands" ]
 
 devices = {
-    'secops_connection':
+    'secop_connection':
         device('nicos_sinq.frappy_sinq.devices.FrappyNode',
                description='TNMR PC SEC node', unit='', async_only=True,
-               prefix=environ.get('SE_PREFIX', 'se_'), auto_create=True, service='main',
-               #uri='tcp://129.129.156.98:5000',
+               prefix='nmr_', auto_create=True, service='main',
                uri='tcp://129.129.156.124:5000',
         ),
     'hdf5filesink': 
         device('nicos_sinq.tnmr.sinks.HDF5_NEXUS.HDF5ScanfileSink',
             filenametemplate=['file_%(proposal)s_%(month)02d-%(day)02d-%(hour)02d-%(minute)02d-%(second)02d.hdf'],
         ),
-    #'nexusfilesink': 
-    #    device('nicos.nexus.nexussink.NexusSink',
-    #        templateclass='nicos_sinq.devices.tnmr.TNMRNeXus.TNMRTemplateProvider',
-    #        filenametemplate=['file_%(proposal)s_%(day)02d-%(hour)02d-%(minute)02d-%(second)02d.nxs'],
-    #    ),
 }
