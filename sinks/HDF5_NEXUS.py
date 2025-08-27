@@ -24,6 +24,9 @@ def initialise_nexus_entry(file, index, timestamp):
 
     env = entry_group.require_group(f'environment')
     env.attrs['NX_class'] = 'NXdata'
+    
+    startenv = entry_group.require_group(f'initial_environment')
+    startenv.attrs['NX_class'] = 'NXdata'
 
     start_timestamp = entry_group.create_dataset('start_time', data=timestamp, dtype=hdf.string_dtype(length=48), shape=1)
     end_timestamp = entry_group.create_dataset('end_time', data=timestamp, dtype=hdf.string_dtype(length=48), shape=1)
@@ -32,7 +35,7 @@ def initialise_nexus_entry(file, index, timestamp):
 
             
 def choose_entry_from_datetime(file, datetime_iso):
-    '''file should be an HDF file object, which should be _open_.'''
+    '''file should be an HDF file object, which should be _open_. Returns the dataset, and a bool indicating if this is a newly created dataset.'''
     entries = list(file.keys())
     datetimes = []
     tmp = []
@@ -43,7 +46,8 @@ def choose_entry_from_datetime(file, datetime_iso):
             tmp += [i]
             starttime_str = np.array(file[i]['start_time'], 'S').tobytes().decode('utf-8')
             if(datetime_iso == starttime_str[:len(datetime_iso)]):
-                return file[i]
+                return file[i], False # the appropriate entry was found
+    # did not find the appropriate entry, must create a new one.
     entries = tmp
     
     # Chop off the 'entry' part
@@ -57,7 +61,7 @@ def choose_entry_from_datetime(file, datetime_iso):
     
     entry_group = initialise_nexus_entry(file, new_entry_index, datetime_iso)
     
-    return entry_group
+    return entry_group, True
 
 # The actual workhorse
 class HDF5ScanfileSinkHandler(DataSinkHandler):
@@ -81,6 +85,7 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
         for f in self._filepaths:
             with hdf.File(f, 'a') as file:
                 file.attrs['version'] = '100' # reserved for non-backwards-compatible changes!
+                # Side note on the file version: 100 is the first one. I am quite proud of my backwards compatibility so far! -DG
                 g = file.require_group('/metadata/')
                 try:
                     d = g.create_dataset('date', data=f'{time.time()} ({time.gmtime()})', dtype=hdf.string_dtype(length=128))
@@ -161,34 +166,39 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
             start_dt_iso = str(start_dt.astimezone().isoformat())
             
             # Get the correct entry (entryX, where X is an integer). Creates a new entry if necessary
-            g = choose_entry_from_datetime(file, start_dt_iso)
+            g, new_dataset = choose_entry_from_datetime(file, start_dt_iso)
             # update end time
             et_dataset = g['end_time']
             et_dataset[0] = str(datetime.datetime.now().astimezone().isoformat())
             
+            target_groups = [] # keys of groups to write to. Can be multiple for the existence of the initial_environment.
             # choose the appropriate group within the entry
             if(key in session.experiment.detlist):
-                group_key = 'detectors'
-            elif(key in session.experiment.envlist) or ('environment/' in key):
-                group_key = 'environment'
-            elif('metadata/' in key):
-                group_key = 'metadata'
-            else:
-                group_key = 'nmr_data'
-            data_group = g.require_group(group_key)
-            
-            # remove any special characters from the key
-            formatted_key = key
-            tagsplit = formatted_key.split(':')
-            tags = ':'.join(tagsplit[:-1]) # take everything before the last ':', these are used to signal special 'tags' on data, such as signal, axes, etc.
-            formatted_key = tagsplit[-1]
-            # remove the location specifier before the first '/' (multiple locations are not supported)
-            if('/' in formatted_key):
-                formatted_key = '/'.join(formatted_key.split('/')[1:])
-            formatted_key = tags + ':' + formatted_key # recombine...
-            
-            #... for write_val to do its job
-            write_val(formatted_key, value, data_group)
+                target_groups += ['detectors']
+            if(key in session.experiment.envlist) or ('environment/' in key):
+                target_groups += ['environment']
+                if(new_dataset):
+                    target_groups += ['initial_environment']
+            if('metadata/' in key):
+                target_groups += ['metadata']
+            if(len(target_groups) == 0):
+                target_groups += ['nmr_data']
+                
+            for group_key in target_groups:
+                data_group = g.require_group(group_key)
+                
+                # remove any special characters from the key
+                formatted_key = key
+                tagsplit = formatted_key.split(':')
+                tags = ':'.join(tagsplit[:-1]) # take everything before the last ':', these are used to signal special 'tags' on data, such as signal, axes, etc.
+                formatted_key = tagsplit[-1]
+                # remove the location specifier before the first '/' (multiple locations are not supported)
+                if('/' in formatted_key):
+                    formatted_key = '/'.join(formatted_key.split('/')[1:])
+                formatted_key = tags + ':' + formatted_key # recombine...
+                
+                #... for write_val to do its job
+                write_val(formatted_key, value, data_group)
             
         for f in self._filepaths:
             with hdf.File(f, 'a') as file:
