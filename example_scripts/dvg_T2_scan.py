@@ -19,32 +19,45 @@
 #
 # *****************************************************************************
 
-p90    = generate_pulse(2.5, 40, 50,  '0 2 0 2 1 3 1 3 0 2 0 2 1 3 1 3')
-p180_2 = generate_pulse(5,   40, 0.1, '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3')
+# do "accessory" stuff. Set field, temperature, etc.
+SetEnvironment(se_tt, se_mf) # Add the PPMS temperature and field to the file at every write.
+if(False):
+    maw(se_tt, 3) # set PPMS temperature
+    nicossleep(20*60) # 20 minutes
+# ...
 
-seq = [ p90, p180_2 ]
+# Create the pulse sequence
+# generate_pulse(pulse_width, amplitude, delay_time, pulse_cycle)
+pw90 = 2.5 # us
+amp = 40 # percent
+tau = 50 # us
+
+p180   = generate_pulse(2*pw90, amp, 1,   '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
+p90    = generate_pulse(pw90,   amp, tau, '0 2 0 2 1 3 1 3 0 2 0 2 1 3 1 3') # 90deg
+p180_2 = generate_pulse(2*pw90, amp, 0,   '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
+seq = [ p180, p90, p180_2 ]
+
+# Create the list of sequences to scan (specifically, for a T1 scan)
+delay_times = log_durations(10, 1_000_000, 20)
+# generates a list of sequences; copies of seq are made, only the zeroth pulse is modified. Each copy is given a 'delay_time' value from delay_times
+seq_list = generate_sequences(seq, [0], 'delay_time', delay_times)
+
+# Now, the reader should note how easy manipulating pulse sequences really is
+for i in range(len(seq_list)):
+    seq_list[i][1]['delay_time'] = max(seq_list[i][0]['delay_time'] - 10.0, 0.1)
 
 # Set some parameters independent of pulse sequence
 globalparams = {
     'acq_phase_cycle': '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1',
     'acquisition_time': 204.8, # us
     'num_scans': 1024, # "1D scans" in TNMR. Our 16-fold phase cycling means this should be a multiple of 16 for proper averaging
-    'ringdown_time': 15, # us
+    'ringdown_time': 1, # us
     'post_acquisition_time': 250, # ms
     'obs_freq': 41.59, # MHz. Receiver frequency
     'nucleus': 'NUCMgReS',
-    'comments': 'An example of a T1 scan',
+    'comments': 'An example of a T2 scan',
 }
 se_tnmr_otf_module.update_parameters(globalparams)
 
-fields = [ 6.8 + i*1e-3 for i in range(2000) ]
-
-print(timestring(estimate_scan_length(globalparams, seq)*len(fields)))
-
-with tnmr_scan(): # Enters a mode of manual file control. Values will now be written into a single file until finish_tnmr_scan() is called
-    for field in fields:
-        maw(se_mf, field) # assuming se_mf controls the reader's external field strength (PPMS, etc.)
-        print_sequence(seq)
-    
-        # Acquire data
-        scan_sequence(seq) # gather the data
+# Acquire data
+scan_sequences(se_tnmr_otf_module, seq_list) # gather the data

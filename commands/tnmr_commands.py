@@ -35,6 +35,28 @@ from nicos.utils import createThread
 
 TNMR_CURRENTLY_SCANNING = None
 
+class tnmr_scan:
+    '''Always acts as a context manager for the data manager. Only the top level tnmr_scan object actually controls the opening and closing of files. '''
+    def __init__(self):
+        self.toplevel = False
+
+    def __enter__(self):
+        global TNMR_CURRENTLY_SCANNING
+        
+        if(TNMR_CURRENTLY_SCANNING is None):
+            dm = DataManager()
+            db = dm.beginScan()
+            TNMR_CURRENTLY_SCANNING = dm
+            self.toplevel = True
+            
+        return TNMR_CURRENTLY_SCANNING
+            
+    def __exit__(self):
+        global TNMR_CURRENTLY_SCANNING
+        if not(TNMR_CURRENTLY_SCANNING is None) and self.toplevel:
+            TNMR_CURRENTLY_SCANNING.finishScan()
+            TNMR_CURRENTLY_SCANNING = None
+    
 @usercommand
 @parallel_safe
 @helparglist('pulse width (us), pulse height (a.u.), delay time (us), phase cycle (str,  e.g., "0 1 2 3")')
@@ -87,8 +109,8 @@ def log_durations(s, e, N):
 
 @usercommand
 @parallel_safe
-@helparglist('the TNMR instance/virtual device, a pulse sequence to estimate')
-def estimate_sequence_length(dev, seq):
+@helparglist('the TNMR instance/virtual device to pull parameters from, a pulse sequence to estimate')
+def estimate_sequence_length_from_device(dev, seq):
     eta = 0.0 # seconds
     tnmr = session.getDevice(dev)
     eta += tnmr.acquisition_time * 1e-6
@@ -99,15 +121,38 @@ def estimate_sequence_length(dev, seq):
         eta += i['pulse_width'] * 1e-6
     eta *= tnmr.num_acqs
     return eta
+   
+@usercommand
+@parallel_safe
+@helparglist('a dictionary of parameters (acquisition_time, pre_acquisition_time, post_acquisition_time, and num_acqs), a pulse sequence to estimate') 
+def estimate_sequence_length(params, seq):
+    eta = 0.0 # seconds
+    eta += params['acquisition_time'] * 1e-6
+    eta += params['pre_acquisition_time'] * 1e-6
+    eta += params['post_acquisition_time'] * 1e-3
+    for i in seq:
+        eta += i['delay_time'] * 1e-6
+        eta += i['pulse_width'] * 1e-6
+    eta *= params['num_acqs']
+    return eta
 
 @usercommand
 @parallel_safe
 @helparglist('the TNMR instance/virtual device to be used, a sequence of pulse sequences to estimate')
-def estimate_scan_length(dev, scan_seq):
+def estimate_scan_length_from_device(dev, scan_seq):
     total_eta = 0.0
     for j in scan_seq:
-        total_eta += estimate_sequence_length(dev, j)
-    return total_eta        
+        total_eta += estimate_sequence_length_from_device(dev, j)
+    return total_eta
+
+@usercommand
+@parallel_safe
+@helparglist('a dictionary of parameters (acquisition_time, pre_acquisition_time, post_acquisition_time, and num_acqs), a sequence of pulse sequences to estimate')
+def estimate_scan_length(params, scan_seq):
+    total_eta = 0.0
+    for j in scan_seq:
+        total_eta += estimate_sequence_length(params, j)
+    return total_eta      
 
 @usercommand
 @parallel_safe
@@ -137,8 +182,8 @@ def timestring(seconds):
 
 @usercommand
 @parallel_safe
-@helparglist('the TNMR instance/virtual device to be used, a pulse sequence to display')
-def print_sequence(dev, seq):
+@helparglist('a pulse sequence to display')
+def print_sequence(seq):
     session.log.info('------------------------')
     session.log.info('PW      |PH      |DT      |PC')
     for i in seq:
@@ -150,32 +195,6 @@ def print_sequence(dev, seq):
         
         session.log.info(f'{i["pulse_width"]:<8}|{i["pulse_height"]:<8}|{delay_time:<8}|{i["phase_cycle"]}')
     session.log.info('------------------------')
-    session.log.info(f'ETA: {timestring(estimate_sequence_length(dev, seq))}')
-    session.log.info('------------------------')
-
-@usercommand
-@helparglist('the reference name of the tnmr module, a pulse sequence to scan')
-def scan_sequence(dev, seq):
-    scan_sequences(dev, [seq])
-
-@usercommand
-def begin_tnmr_scan(soft=False):
-    global TNMR_CURRENTLY_SCANNING
-    
-    if not(soft):
-        finish_tnmr_scan()
-    if(TNMR_CURRENTLY_SCANNING is None):
-        dm = DataManager()
-        db = dm.beginScan()
-        TNMR_CURRENTLY_SCANNING = dm
-    return TNMR_CURRENTLY_SCANNING
-  
-@usercommand
-def finish_tnmr_scan():
-    global TNMR_CURRENTLY_SCANNING
-    if not(TNMR_CURRENTLY_SCANNING is None):
-        TNMR_CURRENTLY_SCANNING.finishScan()
-        TNMR_CURRENTLY_SCANNING = None
 
 @usercommand
 @parallel_safe
@@ -194,78 +213,82 @@ def get_tnmr_params(dev):
     return params_dictionary
 
 @usercommand
-@helparglist('the reference name of the tnmr module, a list of pulse sequences to scan over, a list of (name, lambda) tuples to call (no argument) to be added to the save file')
-def scan_sequences(dev, sequence_list, additional_saving_lambdas=[]):
-    def do_scan(sequence_list):
-        global TNMR_CURRENTLY_SCANNING
-        st = time.time()
-        try:
-            tnmr = session.getDevice(dev)
-            started_scan = not(TNMR_CURRENTLY_SCANNING) # are we starting the scan or did someone else?
-            dm = begin_tnmr_scan(not(started_scan))
-            st = time.time()
-            for i in range(len(sequence_list)):
-                pb = dm.beginPoint()
-                session.log.info(f'Scan: {i+1}/{len(sequence_list)}' + (f' ({float(i)/float(len(sequence_list)-1)*100:.0f}%)' if len(sequence_list) > 1 else ''))
-                total_eta = 0.0
-                for j in sequence_list[i:]:
-                    total_eta += estimate_sequence_length(dev, j)
-                session.log.info(f'ETA: {timestring(total_eta)}')
+@helparglist('the reference name of the tnmr module, a pulse sequence to scan')
+def scan_sequence(dev, seq, additional_saving_lambdas={}, silent=False):
+    try:
+        tnmr = session.getDevice(dev)
+        with tnmr_scan() as dm: # open a file if one is not already opened; if one is, this just gives us a reference to the appropriate datamanager.
+            pb = dm.beginPoint()
+            
+            tnmr.sequence_data = seq
+            print_sequence(seq)
+            session.log.info(f'Point ETA: {timestring(estimate_sequence_length_from_device(dev, seq))}')
+            tnmr.compile_and_run(False)
+            
+            finished = False
+            starttime = time.time() # To signal when measurement started (approximately. This will not be nanosecond-precise, but it's good enough for our purposes)
+            
+            while not(finished):
+                data = tnmr.read() # get latest data, with records about the # of acquisitions that have been performed.
                 
-                tnmr.sequence_data = sequence_list[i]
-                tnmr.compile_and_run(False)
+                finished = (tnmr.status()[0] <= 200) # at the start so final values will be written
+                nicossleep(tnmr.pollinterval) # A metric as good as any
                 
-                finished = False
-                starttime = time.time()
+                if(finished):
+                    st = time.time() # Start a timeout clock, essentially
+                    while (time.time() - st < 30) and (tnmr.num_acqs_actual != tnmr.num_acqs):
+                        nicossleep(0.5) # get up to date values
+                        tnmr.read()
                 
-                while not(finished):
-                    data = tnmr.read()
-                    current_time = time.time()
-                    
-                    finished = (tnmr.status()[0] <= 200) # at the start so final values will be written
-                    nicossleep(tnmr.pollinterval) # A metric as good as any
-                    
-                    if(finished):
-                        st = time.time()
-                        while (time.time() - st < 30) and (tnmr.num_acqs_actual != tnmr.num_acqs):
-                            nicossleep(0.5) # get up to date values
-                            tnmr.read()
-                    
-                    sequence_dictionary = {}
-                    for j in range(len(sequence_list[i])):
-                        sequence_dictionary[j] = sequence_list[i][j]
-                    
-                    params_dict = get_tnmr_params(dev)
-                    full_value_dict = {
-                      'signal:tnmr_reals':               (starttime, data['reals']), 
-                      'auxiliary_signals:tnmr_imags':    (starttime, data['imags']),  
-                      'axes:tnmr_times':                 (starttime, data['t']),
-                      'tnmr_sequence':                   (starttime, sequence_dictionary),
-                      'tnmr_params':                     (starttime, params_dict),
-                      'metadata/nucleus':                (starttime, tnmr.nucleus),
-                      'metadata/sample':                 (starttime, tnmr.sample),
-                      'metadata/comments':               (starttime, tnmr.comments),
-                    }
-                    for i in additional_saving_lambdas:
-                        try:
-                            full_value_dict['environment/'+i[0]] = (starttime, i[1]())
-                        except:
-                            session.log.warning(f'Could not acquire parameter `{i[0]}` for writing into NeXus file. Traceback: \n{traceback.format_exc()}')
-                            pass
+                # Now we need to put our sequence (list of dictionaries) into the form that our file handler wants (dictionary of dictionaries). The keys on the sequences should be informative of the order, so we just set them as the indices of the original list because that will never be unclear.
+                sequence_dictionary = {}
+                for i in range(len(seq)):
+                    sequence_dictionary[i] = seq[i]
                 
-                    dm.putValues(full_value_dict)
-                    
-                    
-                    
+                # Construct a whole dictionary for all the different values we want to pass to the file writer. The key is going to be the key of the data in the end; in the NeXus handler, I've programmed in some "magic" identifiers, such as signal:, axes:, auxiliary_signal:, metadata/, and environment/. These each designate a different place for the data to reside ('/') or be given a NeXus attribute (':').and/or jhavereside and 
+                params_dict = get_tnmr_params(dev)
+                full_value_dict = {
+                    'signal:tnmr_reals':               (starttime, data['reals']), 
+                    'auxiliary_signals:tnmr_imags':    (starttime, data['imags']),  
+                    'axes:tnmr_times':                 (starttime, data['t']),
+                    'tnmr_sequence':                   (starttime, sequence_dictionary),
+                    'tnmr_params':                     (starttime, params_dict),
+                    'metadata/nucleus':                (starttime, tnmr.nucleus),
+                    'metadata/sample':                 (starttime, tnmr.sample),
+                    'metadata/comments':               (starttime, tnmr.comments),
+                }
+                for fkey, func in additional_saving_lambdas.items():
+                    try:
+                        full_value_dict['environment/'+fkey] = (starttime, func())
+                    except:
+                        session.log.warning(f'Could not acquire parameter `{fkey}` for writing into NeXus file. Traceback: \n{traceback.format_exc()}')
+                        pass
+            
+                dm.putValues(full_value_dict)                        
                 dm.finishPoint()
-            if(started_scan):
-                finish_tnmr_scan()
-        except Exception as e:
-            import traceback
-            session.log.warning(traceback.format_exc())
-            finish_tnmr_scan()
-        et = time.time()
-        dt = et - st
-        session.log.info(f'Finished. Took {timestring(dt)}.')
-        
-    do_scan(sequence_list)
+    except Exception as e:
+        import traceback
+        session.log.warning(traceback.format_exc())
+
+@usercommand
+@helparglist('the reference name of the tnmr module, a list of pulse sequences to scan over, a list of (name, lambda) tuples to call (no argument) to be added to the save file')
+def scan_sequences(dev, sequence_list, additional_saving_lambdas={}):
+    global TNMR_CURRENTLY_SCANNING
+    
+    st = time.time()
+    N = len(sequence_list)
+    
+    session.log.info(f'Beginning scan. ETA: {timestring(estimate_scan_length_from_device(dec, sequence_list)}')
+    
+    with tnmr_scan(): # Make sure that everything is put together in one file
+        for i in range(N):
+            seq = sequence_list[i]
+            etascan = timestring(estimate_scan_length_from_device(dev, sequence_list[i:]))
+            session.log.info(f'Beginning point {i+1}/{N}' + (' ({float(i)/(N-1)*100:.0f}% complete)' if N>1 else ''))
+            session.log.info(f'Scan ETA:  {etascan}')  
+            scan_sequence(dev, seq, additional_saving_lambdas)
+      
+    et = time.time()
+    dt = et - st
+    
+    session.log.info(f'Finished. Took {timestring(dt)}.')

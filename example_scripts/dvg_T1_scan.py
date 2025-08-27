@@ -20,31 +20,40 @@
 # *****************************************************************************
 
 # do "accessory" stuff. Set field, temperature, etc.
+SetEnvironment(se_tt, se_mf) # Add the PPMS temperature and field to the file at every write.
+if(False):
+    maw(se_tt, 3) # set PPMS temperature
+    nicossleep(20*60) # 20 minutes
 # ...
 
 # Create the pulse sequence
 # generate_pulse(pulse_width, amplitude, delay_time, pulse_cycle)
-p180   = generate_pulse(5,   40, 1,   '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
-p90    = generate_pulse(2.5, 40, 50,  '0 2 0 2 1 3 1 3 0 2 0 2 1 3 1 3') # 90deg
-p180_2 = generate_pulse(5,   40, 0.1, '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
+pw90 = 2.5 # us
+amp = 40 # percent
+tau = 50 # us
+
+p180   = generate_pulse(2*pw90, amp, 1,   '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
+p90    = generate_pulse(pw90,   amp, tau, '0 2 0 2 1 3 1 3 0 2 0 2 1 3 1 3') # 90deg
+p180_2 = generate_pulse(2*pw90, amp, 0,   '1 3 3 1 2 0 0 2 0 2 2 0 3 1 1 3') # 180deg
 seq = [ p180, p90, p180_2 ]
 
 # Create the list of sequences to scan (specifically, for a T1 scan)
-delay_times = [ 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000 ] # useconds
+delay_times = log_durations(10, 1_000_000, 20)
 # generates a list of sequences; copies of seq are made, only the zeroth pulse is modified. Each copy is given a 'delay_time' value from delay_times
-seq_list = generate_sequences(seq, [0], 'delay_time', taus)
+seq_list = generate_sequences(seq, [0], 'delay_time', delay_times)
 
 # Set some parameters independent of pulse sequence
-se_tnmr_otf_module.acq_phase_cycle = '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1' # somewhat standard 16-term phase cycle
-se_tnmr_otf_module.acquisition_time = 204.8 # us
-se_tnmr_otf_module.num_acqs = 1600 # "1D scans" in TNMR. Number of acquisitions to sum together (to kill noise)
-se_tnmr_otf_module.ringdown_time = 1 # us
-se_tnmr_otf_module.post_acquisition_time = 500 # ms
-se_tnmr_otf_module.obs_freq = 41.59 # MHz. Receiver frequency
-se_tnmr_otf_module.nucleus = '139La'
-se_tnmr_otf_module.comments = 'An example script, illustrating a T1 scan'
+globalparams = {
+    'acq_phase_cycle': '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1',
+    'acquisition_time': 204.8, # us
+    'num_scans': 1024, # "1D scans" in TNMR. Our 16-fold phase cycling means this should be a multiple of 16 for proper averaging
+    'ringdown_time': 15, # us
+    'post_acquisition_time': 250, # ms
+    'obs_freq': 41.59, # MHz. Receiver frequency
+    'nucleus': 'NUCMgReS',
+    'comments': 'An example of a T1 scan',
+}
+se_tnmr_otf_module.update_parameters(globalparams)
 
 # Acquire data
-SetEnvironment(se_tt, se_mf) # Set environment, whose values will be written to the end HDF file
 scan_sequences(se_tnmr_otf_module, seq_list) # gather the data
-finish_tnmr_scan() # not strictly necessary, but redundancy doesn't hurt

@@ -37,8 +37,8 @@ devices = {
                uri='tcp://129.129.156.98:5000',
         ),
     'hdf5filesink': 
-        device('nicos_sinq.devices.tnmr.HDF5.HDF5ScanfileSink',
-            filenametemplate=['file_%(proposal)s_%(day)02d-%(hour)02d-%(minute)02d-%(second)02d.hdf'],
+        device('nicos_sinq.devices.tnmr.HDF5_NEXUS.HDF5ScanfileSink',
+            filenametemplate=['file_%(proposal)s_%(month)02d-%(day)02d-%(hour)02d-%(minute)02d-%(second)02d.hdf'],
         ),
     #'nexusfilesink': 
     #    device('nicos.nexus.nexussink.NexusSink',
