@@ -278,9 +278,10 @@ def scan_sequences(dev, sequence_list, additional_saving_lambdas={}):
     st = time.time()
     N = len(sequence_list)
     
-    session.log.info(f'Beginning scan. ETA: {timestring(estimate_scan_length_from_device(dec, sequence_list)}')
+    initial_estimate = estimate_scan_length_from_device(dev, sequence_list)
+    session.log.info(f'Beginning scan. ETA: {timestring(initial_estimate)}')
     
-    with tnmr_scan(): # Make sure that everything is put together in one file
+    with tnmr_scan(): # Make sure that everything is put together in one file!
         for i in range(N):
             seq = sequence_list[i]
             etascan = timestring(estimate_scan_length_from_device(dev, sequence_list[i:]))
@@ -291,4 +292,5 @@ def scan_sequences(dev, sequence_list, additional_saving_lambdas={}):
     et = time.time()
     dt = et - st
     
-    session.log.info(f'Finished. Took {timestring(dt)}.')
+    error = abs(dt - initial_estimate) / initial_estimate * 100.0f
+    session.log.info(f'Finished scan. Took {timestring(dt)} (error of {error:.0f}% from initial estimate, {error/N:.0f}%/point, {timestring(error/N)} per point).')
