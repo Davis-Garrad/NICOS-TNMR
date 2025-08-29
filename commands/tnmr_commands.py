@@ -51,12 +51,13 @@ class tnmr_scan:
             
         return TNMR_CURRENTLY_SCANNING
             
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         global TNMR_CURRENTLY_SCANNING
         if not(TNMR_CURRENTLY_SCANNING is None) and (self.toplevel):
             TNMR_CURRENTLY_SCANNING.finishScan()
             TNMR_CURRENTLY_SCANNING = None
             session.log.info('Closing scan file context')
+        return False
     
 @usercommand
 @parallel_safe
@@ -222,7 +223,8 @@ def scan_sequence(dev, seq, additional_saving_lambdas={}):
             
             tnmr.sequence_data = seq
             print_sequence(seq)
-            session.log.info(f'Point ETA: {timestring(estimate_sequence_length_from_device(dev, seq))}')
+            estimated_length = estimate_sequence_length_from_device(dev, seq)
+            session.log.info(f'Point ETA: {timestring(estimated_length)}')
             tnmr.compile_and_run(False)
             
             finished = False
@@ -233,7 +235,6 @@ def scan_sequence(dev, seq, additional_saving_lambdas={}):
                 
                 finished = (tnmr.status()[0] <= 200) # at the start so final values will be written
                 nicossleep(tnmr.pollinterval) # A metric as good as any
-                
                 if(finished):
                     st = time.time() # Start a timeout clock, essentially
                     while (time.time() - st < 30) and (tnmr.num_acqs_actual != tnmr.num_acqs):
@@ -265,7 +266,7 @@ def scan_sequence(dev, seq, additional_saving_lambdas={}):
                         pass
             
                 dm.putValues(full_value_dict)                        
-                dm.finishPoint()
+            dm.finishPoint()
     except Exception as e:
         import traceback
         session.log.warning(traceback.format_exc())
@@ -285,12 +286,18 @@ def scan_sequences(dev, sequence_list, additional_saving_lambdas={}):
         for i in range(N):
             seq = sequence_list[i]
             etascan = timestring(estimate_scan_length_from_device(dev, sequence_list[i:]))
-            session.log.info(f'Beginning point {i+1}/{N}' + (' ({float(i)/(N-1)*100:.0f}% complete)' if N>1 else ''))
+            session.log.info(f'Beginning point {i+1}/{N}' + (f' ({float(i)/(N-1)*100:.0f}% complete)' if N>1 else ''))
             session.log.info(f'Scan ETA:  {etascan}')  
             scan_sequence(dev, seq, additional_saving_lambdas)
       
     et = time.time()
     dt = et - st
     
-    error = abs(dt - initial_estimate) / initial_estimate * 100.0f
+    error = abs(dt - initial_estimate) / initial_estimate * 100.0
     session.log.info(f'Finished scan. Took {timestring(dt)} (error of {error:.0f}% from initial estimate, {error/N:.0f}%/point, {timestring(error/N)} per point).')
+    
+@usercommand
+@helparglist('the device whose parameters shoudl be updated, a dictionary of the parameters')
+def update_device_parameters(dev, dic):
+    for k,v in dic.items():
+        setattr(dev, k, v)

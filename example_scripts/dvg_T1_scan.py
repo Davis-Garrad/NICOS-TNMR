@@ -21,9 +21,8 @@
 
 # do "accessory" stuff. Set field, temperature, etc.
 SetEnvironment(se_tt, se_mf) # Add the PPMS temperature and field to the file at every write.
-if(False):
-    maw(se_tt, 3) # set PPMS temperature
-    nicossleep(20*60) # 20 minutes
+#maw(se_tt, 3) # set PPMS temperature
+#nicossleep(20*60) # 20 minutes
 # ...
 
 # Create the pulse sequence
@@ -46,14 +45,14 @@ seq_list = generate_sequences(seq, [0], 'delay_time', delay_times)
 globalparams = {
     'acq_phase_cycle': '0 2 0 2 1 3 1 3 2 0 2 0 3 1 3 1',
     'acquisition_time': 204.8, # us
-    'num_scans': 1024, # "1D scans" in TNMR. Our 16-fold phase cycling means this should be a multiple of 16 for proper averaging
+    'num_acqs': 100, # "1D scans" in TNMR. Our 16-fold phase cycling means this should be a multiple of 16 for proper averaging
     'ringdown_time': 15, # us
     'post_acquisition_time': 250, # ms
     'obs_freq': 41.59, # MHz. Receiver frequency
     'nucleus': 'NUCMgReS',
     'comments': 'An example of a T1 scan',
 }
-nmr_daq_scout.update_parameters(globalparams)
+update_device_parameters(nmr_daq_scout, globalparams)
 
 # Acquire data
 scan_sequences(nmr_daq_scout, seq_list) # gather the data

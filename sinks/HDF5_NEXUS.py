@@ -177,7 +177,7 @@ class HDF5ScanfileSinkHandler(DataSinkHandler):
                 target_groups += ['detectors']
             if(key in session.experiment.envlist) or ('environment/' in key):
                 target_groups += ['environment']
-                if(new_dataset):
+                if not(key in g['initial_environment'].keys()):
                     target_groups += ['initial_environment']
             if('metadata/' in key):
                 target_groups += ['metadata']

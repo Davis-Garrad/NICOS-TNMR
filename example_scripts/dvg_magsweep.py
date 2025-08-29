@@ -33,9 +33,9 @@ globalparams = {
     'post_acquisition_time': 250, # ms
     'obs_freq': 41.59, # MHz. Receiver frequency
     'nucleus': 'NUCMgReS',
-    'comments': 'An example of a T1 scan',
+    'comments': 'An example of a field sweep',
 }
-nmr_daq_scout.update_parameters(globalparams)
+update_device_parameters(nmr_daq_scout, globalparams)
 
 fields = [ 6.8 + i*1e-3 for i in range(2000) ]
 
